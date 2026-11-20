@@ -13,13 +13,14 @@ app.use(express.json());
 // Servir imágenes estáticas
 app.use('/img', express.static(path.join(__dirname, 'public', 'img')));
 
-// Conexión a MySQL
+// Conexión a MySQL (compatible con nombres locales y de Railway)
 const db = mysql.createConnection({
-  host: process.env.MYSQL_HOST,
-  port: parseInt(process.env.MYSQL_PORT),
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE
+  host: process.env.MYSQL_HOST || process.env.MYSQLHOST,
+  port: parseInt(process.env.MYSQL_PORT || process.env.MYSQLPORT || '3306', 10),
+  user: process.env.MYSQL_USER || process.env.MYSQLUSER,
+  password: process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD,
+  database: process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE,
+  ssl: process.env.MYSQL_SSL === 'true' ? { rejectUnauthorized: false } : undefined
 });
 
 db.connect((err) => {
@@ -132,9 +133,9 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/clientes', (req, res) => {
   const { nombre, apellido, email, telefono, direccion, ciudad } = req.body;
-  
+
   console.log('📦 Registrando cliente:', { nombre, apellido, email, telefono, direccion, ciudad });
-  
+
   db.query(
     'INSERT INTO clientes (nombre, apellido, email, telefono, direccion, ciudad) VALUES (?, ?, ?, ?, ?, ?)',
     [nombre, apellido, email, telefono, direccion, ciudad],
@@ -155,68 +156,72 @@ app.post('/api/clientes', (req, res) => {
 
 app.post('/api/ventas', (req, res) => {
   const { cliente_id, total, productos } = req.body;
-  
+
+  if (!Array.isArray(productos) || productos.length === 0) {
+    return res.status(400).json({ error: 'No hay productos en la venta' });
+  }
+
   console.log('📦 Recibiendo venta:', { cliente_id, total, productos });
-  
+
   db.beginTransaction((err) => {
     if (err) {
       console.error('❌ Error beginTransaction:', err);
       return res.status(500).json({ error: err.message });
     }
-    
+
     let ventasInsertadas = 0;
     const totalProductos = productos.length;
-    let hayError = false;
-    
-    productos.forEach(producto => {
-      if (hayError) return;
-      
+    let respuestaEnviada = false;
+
+    const responderError = (status, mensaje, errorObj) => {
+      if (errorObj) console.error(mensaje, errorObj);
+      if (respuestaEnviada) return;
+      respuestaEnviada = true;
+      db.rollback(() => {
+        res.status(status).json({ error: typeof errorObj === 'string' ? errorObj : (errorObj?.message || mensaje) });
+      });
+    };
+
+    for (const producto of productos) {
+      if (respuestaEnviada) break;
+
       const totalProducto = producto.precio * producto.cantidad;
-      
+
       // Insertar en tabla ventas
       db.query(
         'INSERT INTO ventas (id_cliente, id_producto, cantidad, total, fecha_venta) VALUES (?, ?, ?, ?, NOW())',
         [cliente_id, producto.id, producto.cantidad, totalProducto],
-        (err) => {
-          if (err) {
-            hayError = true;
-            console.error('❌ Error insertando venta:', err);
-            db.rollback(() => {});
-            return res.status(500).json({ error: err.message });
+        (errInsert) => {
+          if (errInsert) {
+            return responderError(500, '❌ Error insertando venta:', errInsert);
           }
-          
+
           console.log('✅ Venta insertada: producto ' + producto.id + ', cantidad ' + producto.cantidad);
-          
+
           // Actualizar stock
           db.query(
             'UPDATE productos SET stock = stock - ? WHERE id = ? AND stock >= ?',
             [producto.cantidad, producto.id, producto.cantidad],
-            (err, result) => {
-              if (err) {
-                hayError = true;
-                console.error('❌ Error actualizando stock:', err);
-                db.rollback(() => {});
-                return res.status(500).json({ error: err.message });
+            (errStock, result) => {
+              if (errStock) {
+                return responderError(500, '❌ Error actualizando stock:', errStock);
               }
-              
+
               if (result.affectedRows === 0) {
-                hayError = true;
-                console.error('❌ Stock insuficiente para producto', producto.id);
-                db.rollback(() => {});
-                return res.status(400).json({ error: 'Stock insuficiente' });
+                return responderError(400, `❌ Stock insuficiente para producto ${producto.id}`, 'Stock insuficiente');
               }
-              
+
               console.log('✅ Stock actualizado: producto ' + producto.id);
-              
+
               ventasInsertadas++;
-              
-              if (ventasInsertadas === totalProductos && !hayError) {
-                db.commit((err) => {
-                  if (err) {
-                    console.error('❌ Error commit:', err);
-                    db.rollback(() => {});
-                    return res.status(500).json({ error: err.message });
+
+              if (ventasInsertadas === totalProductos && !respuestaEnviada) {
+                db.commit((errCommit) => {
+                  if (errCommit) {
+                    return responderError(500, '❌ Error commit:', errCommit);
                   }
+                  if (respuestaEnviada) return;
+                  respuestaEnviada = true;
                   console.log('✅ Venta completada exitosamente');
                   res.json({ message: 'Venta registrada y stock actualizado' });
                 });
@@ -225,7 +230,7 @@ app.post('/api/ventas', (req, res) => {
           );
         }
       );
-    });
+    }
   });
 });
 
