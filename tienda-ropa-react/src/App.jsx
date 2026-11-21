@@ -30,7 +30,7 @@ function App() {
 
   const cargarProductos = async () => {
     try {
-      const respuesta = await fetch('http://localhost:36026/api/productos', {
+      const respuesta = await fetch('https://elegacia-store-production.up.railway.app/api/productos', {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' },
         cache: 'no-store'
@@ -53,7 +53,7 @@ function App() {
 
   const cargarCategorias = async () => {
     try {
-      const respuesta = await fetch('http://localhost:36026/api/categorias')
+      const respuesta = await fetch('https://elegacia-store-production.up.railway.app/api/categorias')
       if (!respuesta.ok) throw new Error('Error al cargar categorías')
       const datos = await respuesta.json()
       setCategorias(datos)
@@ -131,7 +131,7 @@ function App() {
     }
 
     try {
-      const respCliente = await fetch('http://localhost:36026/api/clientes', {
+      const respCliente = await fetch('https://elegacia-store-production.up.railway.app/api/clientes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(datosCliente)
@@ -144,7 +144,7 @@ function App() {
 
       const clienteId = datosClienteResp.id
 
-      const respuesta = await fetch('http://localhost:36026/api/ventas', {
+      const respuesta = await fetch('https://elegacia-store-production.up.railway.app/api/ventas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -184,7 +184,7 @@ function App() {
   const handleLogin = async (e) => {
     e.preventDefault()
     try {
-      const respuesta = await fetch('http://localhost:36026/api/login', {
+      const respuesta = await fetch('https://elegacia-store-production.up.railway.app/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ usuario, password })
@@ -205,8 +205,8 @@ function App() {
   const guardarProducto = async (e) => {
     e.preventDefault()
     const url = productoEditando
-      ? 'http://localhost:36026/api/productos/' + productoEditando.id
-      : 'http://localhost:36026/api/productos'
+      ? 'https://elegacia-store-production.up.railway.app/api/productos/' + productoEditando.id
+      : 'https://elegacia-store-production.up.railway.app/api/productos'
     const metodo = productoEditando ? 'PUT' : 'POST'
     try {
       const respuesta = await fetch(url, {
@@ -229,7 +229,7 @@ function App() {
   const eliminarProducto = async (id) => {
     if (!confirm('¿Seguro que quieres eliminar este producto?')) return
     try {
-      const respuesta = await fetch('http://localhost:36026/api/productos/' + id, { method: 'DELETE' })
+      const respuesta = await fetch('https://elegacia-store-production.up.railway.app/api/productos/' + id, { method: 'DELETE' })
       if (respuesta.ok) {
         alert('Producto eliminado')
         await cargarProductos()
